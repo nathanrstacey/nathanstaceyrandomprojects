@@ -78,6 +78,14 @@ resource "aws_subnet" "server1" {
   tags = merge(local.tags, { Name = "nathanstacey-server1-subnet-lab" })
 }
 
+resource "aws_subnet" "public_wan" {
+  vpc_id                  = var.vpc_id
+  cidr_block              = "172.31.103.0/24"  # choose a free /24 in your VPC
+  map_public_ip_on_launch = true
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  tags = merge(local.tags, { Name = "nathanstacey-public-wan-subnet" })
+}
+
 # ------------------------------
 # Security Groups
 # ------------------------------
@@ -200,6 +208,37 @@ resource "aws_security_group" "server2_sg" {
   tags = merge(local.tags, { Name = "nathanstacey-server2-sg-lab" })
 }
 
+resource "aws_security_group" "firewall_wan_sg" {
+  name        = "nathanstacey-firewall-wan-sg"
+  description = "Firewall WAN SG"
+  vpc_id      = var.vpc_id
+
+  # SSH/HTTPS access from your admin network
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.tags, { Name = "nathanstacey-firewall-wan-sg-lab" })
+}
+
+
 # ------------------------------
 # FTP Server1
 # ------------------------------
@@ -229,9 +268,20 @@ resource "aws_instance" "server2" {
 # Firewall ENIs + Instances (Ubuntu + UFW)
 # ------------------------------
 
+
+resource "aws_network_interface" "fw_backup_wan_eni" {
+  subnet_id         = aws_subnet.public_wan.id
+  private_ips       = ["172.31.103.11"]
+  security_groups   = [aws_security_group.firewall_wan_sg.id]
+  source_dest_check = false
+  tags = {
+    Name = "fw-backup-wan-eni"
+  }
+}
+
 resource "aws_network_interface" "fw_primary_wan_eni" {
-  subnet_id         = aws_subnet.public_subnet.id
-  private_ips       = ["10.0.1.10"] # choose your WAN IP
+  subnet_id         = aws_subnet.public_wan.id
+  private_ips       = ["172.31.103.10"]
   security_groups   = [aws_security_group.firewall_wan_sg.id]
   source_dest_check = false
   tags = {
@@ -245,13 +295,13 @@ resource "aws_network_interface_attachment" "fw_primary_wan_attach" {
 }
 
 
-resource "aws_network_interface" "fw_backup_wan_eni" {
-  subnet_id         = aws_subnet.public_subnet.id
-  private_ips       = ["10.0.1.11"] # choose your WAN IP
+resource "aws_network_interface" "fw_primary_wan_eni" {
+  subnet_id         = aws_subnet.public_wan.id
+  private_ips       = ["172.31.103.10"]
   security_groups   = [aws_security_group.firewall_wan_sg.id]
   source_dest_check = false
   tags = {
-    Name = "fw-backup-wan-eni"
+    Name = "fw-primary-wan-eni"
   }
 }
 resource "aws_network_interface_attachment" "fw_backup_wan_attach" {
