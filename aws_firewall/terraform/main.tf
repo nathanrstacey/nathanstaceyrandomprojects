@@ -282,7 +282,7 @@ resource "aws_network_interface" "fw_primary_wan_eni" {
 resource "aws_network_interface_attachment" "fw_primary_wan_attach" {
   instance_id          = aws_instance.firewall_primary.id
   network_interface_id = aws_network_interface.fw_primary_wan_eni.id
-  device_index         = 0
+  device_index         = 1  # secondary NIC
 }
 
 
@@ -298,7 +298,7 @@ resource "aws_network_interface" "fw_backup_wan_eni" {
 resource "aws_network_interface_attachment" "fw_backup_wan_attach" {
   instance_id          = aws_instance.firewall_backup.id
   network_interface_id = aws_network_interface.fw_backup_wan_eni.id
-  device_index         = 0
+  device_index         = 1
 }
 
 
