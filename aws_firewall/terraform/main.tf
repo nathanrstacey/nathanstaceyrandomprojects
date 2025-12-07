@@ -284,42 +284,41 @@ resource "aws_eip_association" "fw_backup_eip_assoc" {
 
 # Primary firewall Instance
 resource "aws_instance" "firewall_primary" {
-  ami                    = "ami-0f5fcdfbd140e4ab7"
-  instance_type          = "t3.small"
+  ami           = "ami-0f5fcdfbd140e4ab7"
+  instance_type = "t3.small"
 
-
-  network_interface {
-    network_interface_id = aws_network_interface.fw_primary_wan_eni.id
-    device_index         = 0
-  }
-
-  network_interface {
-    network_interface_id = aws_network_interface.fw_primary_lan_eni.id
-    device_index         = 1
-  }
+  # eth0 (primary NIC)
+  primary_network_interface_id = aws_network_interface.fw_primary_wan_eni.id
 
   tags = merge(local.tags, { Name = "nathanstacey-firewall-primary-lab" })
+}
+
+# Attach eth1 (LAN NIC)
+resource "aws_network_interface_attachment" "fw_primary_lan_attach" {
+  instance_id          = aws_instance.firewall_primary.id
+  network_interface_id = aws_network_interface.fw_primary_lan_eni.id
+  device_index         = 1
 }
 
 
 # Backup firewall Instance (same as primary but with "bad ACL")
 resource "aws_instance" "firewall_backup" {
-  ami                    = "ami-0f5fcdfbd140e4ab7"
-  instance_type          = "t3.small"
+  ami           = "ami-0f5fcdfbd140e4ab7"
+  instance_type = "t3.small"
 
-
-  network_interface {
-    network_interface_id = aws_network_interface.fw_backup_wan_eni.id
-    device_index         = 0
-  }
-
-  network_interface {
-    network_interface_id = aws_network_interface.fw_backup_lan_eni.id
-    device_index         = 1
-  }
+  # eth0 (primary NIC)
+  primary_network_interface_id = aws_network_interface.fw_backup_wan_eni.id
 
   tags = merge(local.tags, { Name = "nathanstacey-firewall-backup-lab" })
 }
+
+# Attach eth1 (LAN NIC)
+resource "aws_network_interface_attachment" "fw_backup_lan_attach" {
+  instance_id          = aws_instance.firewall_backup.id
+  network_interface_id = aws_network_interface.fw_backup_lan_eni.id
+  device_index         = 1
+}
+
 
 # ------------------------------
 # Route Tables
