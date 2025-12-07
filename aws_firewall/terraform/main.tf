@@ -15,7 +15,7 @@ provider "aws" {
 # ------------------------------
 # Variables
 # ------------------------------
-variable "aws_region" {}
+#variable "aws_region" {}
 variable "vpc_id" {
   default = "vpc-773e7e1e"
 }
