@@ -1,0 +1,19 @@
+- hosts: ftp
+  become: yes
+  roles:
+    - ftp_server
+
+- hosts: downloader
+  become: yes
+  roles:
+    - downloader
+
+- hosts: firewall_primary
+  become: yes
+  roles:
+    - firewall_primary
+
+- hosts: firewall_backup
+  become: yes
+  roles:
+    - firewall_backup
