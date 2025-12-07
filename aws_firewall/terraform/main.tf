@@ -232,6 +232,7 @@ resource "aws_instance" "server2" {
 # Primary firewall: create two ENIs (wan + lan) with static private IPs in firewall subnet
 resource "aws_network_interface" "fw_primary_wan_eni" {
   subnet_id       = aws_subnet.firewall.id
+  source_dest_check      = false
   private_ips     = ["172.31.101.10"]
   security_groups = [aws_security_group.firewall_sg.id]
   tags = merge(local.tags, { Name = "nathanstacey-fw-primary-wan-eni" })
@@ -239,6 +240,7 @@ resource "aws_network_interface" "fw_primary_wan_eni" {
 
 resource "aws_network_interface" "fw_primary_lan_eni" {
   subnet_id       = aws_subnet.firewall.id
+  source_dest_check      = false
   private_ips     = ["172.31.101.11"]
   security_groups = [aws_security_group.firewall_sg.id]
   tags = merge(local.tags, { Name = "nathanstacey-fw-primary-lan-eni" })
@@ -247,6 +249,7 @@ resource "aws_network_interface" "fw_primary_lan_eni" {
 # Backup firewall ENIs
 resource "aws_network_interface" "fw_backup_wan_eni" {
   subnet_id       = aws_subnet.firewall.id
+  source_dest_check      = false
   private_ips     = ["172.31.101.20"]
   security_groups = [aws_security_group.firewall_sg.id]
   tags = merge(local.tags, { Name = "nathanstacey-fw-backup-wan-eni" })
@@ -254,6 +257,7 @@ resource "aws_network_interface" "fw_backup_wan_eni" {
 
 resource "aws_network_interface" "fw_backup_lan_eni" {
   subnet_id       = aws_subnet.firewall.id
+  source_dest_check      = false
   private_ips     = ["172.31.101.21"]
   security_groups = [aws_security_group.firewall_sg.id]
   tags = merge(local.tags, { Name = "nathanstacey-fw-backup-lan-eni" })
@@ -287,13 +291,11 @@ resource "aws_instance" "firewall_primary" {
   # associate_public_ip_address = false   <-- REMOVE THIS
 
   network_interface {
-    source_dest_check      = false
     network_interface_id = aws_network_interface.fw_primary_wan_eni.id
     device_index         = 0
   }
 
   network_interface {
-    source_dest_check      = false
     network_interface_id = aws_network_interface.fw_primary_lan_eni.id
     device_index         = 1
   }
@@ -310,13 +312,11 @@ resource "aws_instance" "firewall_backup" {
   vpc_security_group_ids = [aws_security_group.firewall_sg.id]
 
   network_interface {
-    source_dest_check      = false
     network_interface_id = aws_network_interface.fw_backup_wan_eni.id
     device_index         = 0
   }
 
   network_interface {
-    source_dest_check      = false
     network_interface_id = aws_network_interface.fw_backup_lan_eni.id
     device_index         = 1
   }
