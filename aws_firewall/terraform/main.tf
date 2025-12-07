@@ -269,16 +269,6 @@ resource "aws_instance" "server2" {
 # ------------------------------
 
 
-resource "aws_network_interface" "fw_backup_wan_eni" {
-  subnet_id         = aws_subnet.public_wan.id
-  private_ips       = ["172.31.103.11"]
-  security_groups   = [aws_security_group.firewall_wan_sg.id]
-  source_dest_check = false
-  tags = {
-    Name = "fw-backup-wan-eni"
-  }
-}
-
 resource "aws_network_interface" "fw_primary_wan_eni" {
   subnet_id         = aws_subnet.public_wan.id
   private_ips       = ["172.31.103.10"]
@@ -295,13 +285,13 @@ resource "aws_network_interface_attachment" "fw_primary_wan_attach" {
 }
 
 
-resource "aws_network_interface" "fw_primary_wan_eni" {
+resource "aws_network_interface" "fw_backup_wan_eni" {
   subnet_id         = aws_subnet.public_wan.id
-  private_ips       = ["172.31.103.10"]
+  private_ips       = ["172.31.103.11"]
   security_groups   = [aws_security_group.firewall_wan_sg.id]
   source_dest_check = false
   tags = {
-    Name = "fw-primary-wan-eni"
+    Name = "fw-backup-wan-eni"
   }
 }
 resource "aws_network_interface_attachment" "fw_backup_wan_attach" {
