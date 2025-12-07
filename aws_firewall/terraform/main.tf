@@ -315,13 +315,13 @@ resource "aws_instance" "firewall_backup" {
 }
 
 # ------------------------------
-# Route Tables: Force client and server1 traffic via the primary firewall LAN ENI
+# Route Tables
 # ------------------------------
 
-# Create route table for client subnet
+# Client subnet route table
 resource "aws_route_table" "client_rt" {
   vpc_id = var.vpc_id
-  tags = merge(local.tags, { Name = "nathanstacey-client-rt" })
+  tags   = merge(local.tags, { Name = "nathanstacey-client-rt" })
 }
 
 resource "aws_route_table_association" "client_assoc" {
@@ -329,24 +329,24 @@ resource "aws_route_table_association" "client_assoc" {
   route_table_id = aws_route_table.client_rt.id
 }
 
-# Route to server1 via primary firewall LAN ENI (so traffic goes to firewall)
+# Route client -> server1 via primary firewall LAN ENI
 resource "aws_route" "client_to_server1" {
   route_table_id         = aws_route_table.client_rt.id
-  destination_cidr_block = "172.31.102.0/24"
+  destination_cidr_block = aws_subnet.server1.cidr_block
   network_interface_id   = aws_network_interface.fw_primary_lan_eni.id
 }
 
-# (Optional) default route via the firewall (comment/uncomment if you want)
+# Optional: default route via firewall WAN ENI
 resource "aws_route" "client_default_via_fw" {
   route_table_id         = aws_route_table.client_rt.id
   destination_cidr_block = "0.0.0.0/0"
   network_interface_id   = aws_network_interface.fw_primary_wan_eni.id
 }
 
-# Create route table for server1 subnet
+# Server1 subnet route table
 resource "aws_route_table" "server1_rt" {
   vpc_id = var.vpc_id
-  tags = merge(local.tags, { Name = "nathanstacey-server1-rt" })
+  tags   = merge(local.tags, { Name = "nathanstacey-server1-rt" })
 }
 
 resource "aws_route_table_association" "server1_assoc" {
@@ -354,27 +354,24 @@ resource "aws_route_table_association" "server1_assoc" {
   route_table_id = aws_route_table.server1_rt.id
 }
 
+# Route server1 -> client via primary firewall LAN ENI
 resource "aws_route" "server1_to_client" {
   route_table_id         = aws_route_table.server1_rt.id
-  destination_cidr_block = "172.31.100.0/24"
+  destination_cidr_block = aws_subnet.client.cidr_block
   network_interface_id   = aws_network_interface.fw_primary_lan_eni.id
 }
 
+# Optional: default route via firewall WAN ENI
 resource "aws_route" "server1_default_via_fw" {
   route_table_id         = aws_route_table.server1_rt.id
   destination_cidr_block = "0.0.0.0/0"
   network_interface_id   = aws_network_interface.fw_primary_wan_eni.id
 }
 
-# Firewall subnet route table (allow local + internet via IGW)
-resource "aws_internet_gateway" "igw" {
-  vpc_id = var.vpc_id
-  tags = merge(local.tags, { Name = "nathanstacey-igw" })
-}
-
+# Firewall subnet route table
 resource "aws_route_table" "firewall_rt" {
   vpc_id = var.vpc_id
-  tags = merge(local.tags, { Name = "nathanstacey-firewall-rt" })
+  tags   = merge(local.tags, { Name = "nathanstacey-firewall-rt" })
 }
 
 resource "aws_route_table_association" "firewall_assoc" {
@@ -382,21 +379,15 @@ resource "aws_route_table_association" "firewall_assoc" {
   route_table_id = aws_route_table.firewall_rt.id
 }
 
+# Firewall subnet default route to internet via IGW
 resource "aws_route" "firewall_default" {
   route_table_id         = aws_route_table.firewall_rt.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.igw.id
 }
 
-resource "aws_route" "firewall_client_local" {
-  route_table_id         = aws_route_table.firewall_rt.id
-  destination_cidr_block = "172.31.100.0/24"
-}
+# No need to declare local routes; AWS handles internal subnet routing automatically
 
-resource "aws_route" "firewall_server1_local" {
-  route_table_id         = aws_route_table.firewall_rt.id
-  destination_cidr_block = "172.31.102.0/24"
-}
 
 # ------------------------------
 # Outputs for convenience
