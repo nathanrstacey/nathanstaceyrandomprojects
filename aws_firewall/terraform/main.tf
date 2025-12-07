@@ -266,67 +266,85 @@ resource "aws_instance" "server2" {
 }
 
 # ------------------------------
-# Firewall ENIs + Instances (Ubuntu + UFW)
+# Firewall ENIs + Instances
 # ------------------------------
 
-
+# Primary Firewall ENIs
 resource "aws_network_interface" "fw_primary_wan_eni" {
   subnet_id         = aws_subnet.public_wan.id
   private_ips       = ["172.31.103.10"]
   security_groups   = [aws_security_group.firewall_wan_sg.id]
   source_dest_check = false
-  tags = {
-    Name = "fw-primary-wan-eni"
-  }
+  tags = { Name = "fw-primary-wan-eni" }
 }
+
+resource "aws_network_interface" "fw_primary_lan_eni" {
+  subnet_id         = aws_subnet.firewall.id
+  private_ips       = ["172.31.101.11"]
+  security_groups   = [aws_security_group.firewall_sg.id]
+  source_dest_check = false
+  tags = merge(local.tags, { Name = "nathanstacey-fw-primary-lan-eni" })
+}
+
+resource "aws_instance" "firewall_primary" {
+  ami               = "ami-0f5fcdfbd140e4ab7"
+  instance_type     = "t3.small"
+  subnet_id         = aws_subnet.firewall.id
+  source_dest_check = false
+  vpc_security_group_ids = [aws_security_group.firewall_sg.id]
+  tags = merge(local.tags, { Name = "nathanstacey-firewall-primary-lab" })
+}
+
 resource "aws_network_interface_attachment" "fw_primary_wan_attach" {
   instance_id          = aws_instance.firewall_primary.id
   network_interface_id = aws_network_interface.fw_primary_wan_eni.id
-  device_index         = 1  # secondary NIC
+  device_index         = 1
 }
 
+resource "aws_network_interface_attachment" "fw_primary_lan_attach" {
+  instance_id          = aws_instance.firewall_primary.id
+  network_interface_id = aws_network_interface.fw_primary_lan_eni.id
+  device_index         = 2
+}
 
+# Backup Firewall ENIs
 resource "aws_network_interface" "fw_backup_wan_eni" {
   subnet_id         = aws_subnet.public_wan.id
   private_ips       = ["172.31.103.11"]
   security_groups   = [aws_security_group.firewall_wan_sg.id]
   source_dest_check = false
-  tags = {
-    Name = "fw-backup-wan-eni"
-  }
+  tags = { Name = "fw-backup-wan-eni" }
 }
+
+resource "aws_network_interface" "fw_backup_lan_eni" {
+  subnet_id         = aws_subnet.firewall.id
+  private_ips       = ["172.31.101.21"]
+  security_groups   = [aws_security_group.firewall_sg.id]
+  source_dest_check = false
+  tags = merge(local.tags, { Name = "nathanstacey-fw-backup-lan-eni" })
+}
+
+resource "aws_instance" "firewall_backup" {
+  ami               = "ami-0f5fcdfbd140e4ab7"
+  instance_type     = "t3.small"
+  subnet_id         = aws_subnet.firewall.id
+  source_dest_check = false
+  vpc_security_group_ids = [aws_security_group.firewall_sg.id]
+  tags = merge(local.tags, { Name = "nathanstacey-firewall-backup-lab" })
+}
+
 resource "aws_network_interface_attachment" "fw_backup_wan_attach" {
   instance_id          = aws_instance.firewall_backup.id
   network_interface_id = aws_network_interface.fw_backup_wan_eni.id
   device_index         = 1
 }
 
-
-
-
-
-resource "aws_network_interface" "fw_primary_lan_eni" {
-  subnet_id       = aws_subnet.firewall.id
-  source_dest_check      = false
-  private_ips     = ["172.31.101.11"]
-  security_groups = [aws_security_group.firewall_sg.id]
-  tags = merge(local.tags, { Name = "nathanstacey-fw-primary-lan-eni" })
-}
-
-
-
-resource "aws_network_interface" "fw_backup_lan_eni" {
-  subnet_id       = aws_subnet.firewall.id
-  source_dest_check      = false
-  private_ips     = ["172.31.101.21"]
-  security_groups = [aws_security_group.firewall_sg.id]
-  tags = merge(local.tags, { Name = "nathanstacey-fw-backup-lan-eni" })
-}
 resource "aws_network_interface_attachment" "fw_backup_lan_attach" {
   instance_id          = aws_instance.firewall_backup.id
   network_interface_id = aws_network_interface.fw_backup_lan_eni.id
-  device_index         = 1
+  device_index         = 2
 }
+
 
 
 # EIPs for WAN ENIs so you can access UI/SSH from Internet
