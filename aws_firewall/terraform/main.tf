@@ -47,11 +47,10 @@ data "aws_availability_zones" "available" {}
 # Internet Gateway
 # ------------------------------
 resource "aws_internet_gateway" "igw" {
-  # Import existing IGW to avoid duplicate
-  # terraform import aws_internet_gateway.igw igw-09501eb40f0284ed9
   vpc_id = var.vpc_id
   tags   = merge(local.tags, { Name = "nathanstacey-igw" })
 }
+
 
 # ------------------------------
 # Subnets
