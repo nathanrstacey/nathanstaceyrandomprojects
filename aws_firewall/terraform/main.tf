@@ -252,7 +252,6 @@ resource "aws_network_interface" "fw_backup_lan_eni" {
 
 # EIPs for WAN ENIs so you can access UI/SSH from Internet
 resource "aws_eip" "fw_primary_eip" {
-  vpc = true
   tags = merge(local.tags, { Name = "nathanstacey-fw-primary-eip" })
 }
 
@@ -262,7 +261,6 @@ resource "aws_eip_association" "fw_primary_eip_assoc" {
 }
 
 resource "aws_eip" "fw_backup_eip" {
-  vpc = true
   tags = merge(local.tags, { Name = "nathanstacey-fw-backup-eip" })
 }
 
@@ -406,11 +404,11 @@ resource "aws_route" "firewall_server1_local" {
 # Outputs for convenience
 # ------------------------------
 output "fw_primary_wan_private_ip" {
-  value = aws_network_interface.fw_primary_wan_eni.private_ips[0]
+  value = tolist(aws_network_interface.fw_primary_wan_eni.private_ips)[0]
 }
 
 output "fw_primary_lan_private_ip" {
-  value = aws_network_interface.fw_primary_lan_eni.private_ips[0]
+  value = tolist(aws_network_interface.fw_primary_lan_eni.private_ips)[0]
 }
 
 output "fw_primary_eip" {
