@@ -1,0 +1,5 @@
+- name: Deny client → server1 (bad ACL)
+  ufw:
+    rule: deny
+    src: 172.31.100.0/24
+    dest: 172.31.102.0/24

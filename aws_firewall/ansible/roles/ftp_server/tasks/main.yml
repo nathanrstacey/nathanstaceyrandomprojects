@@ -1,0 +1,31 @@
+---
+- name: Install vsftpd
+  apt:
+    name: vsftpd
+    state: present
+    update_cache: yes
+
+- name: Configure passive mode
+  lineinfile:
+    path: /etc/vsftpd.conf
+    line: "{{ item }}"
+  loop:
+    - "pasv_enable=YES"
+    - "pasv_min_port=40000"
+    - "pasv_max_port=50000"
+
+- name: Restart vsftpd
+  service:
+    name: vsftpd
+    state: restarted
+
+- name: Create testfile.bin
+  shell: |
+    fallocate -l 1500M /srv/ftp/testfile.bin || dd if=/dev/zero of=/srv/ftp/testfile.bin bs=1M count=1500
+  args:
+    creates: /srv/ftp/testfile.bin
+
+- name: Fix permissions
+  file:
+    path: /srv/ftp/testfile.bin
+    mode: "0644"

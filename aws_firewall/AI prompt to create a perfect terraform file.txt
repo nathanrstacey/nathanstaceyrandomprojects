@@ -1,0 +1,166 @@
+Can you create a terraform that creates the following architecture? This is a for a lab
+
+#Longterm goal of the lab I am making this terraform in stages. 
+This will make it easier to troubleshoot any issues that might occur while making this 
+The eventual end goal is to simulate a firewall break and that the backup firewall fails 
+This will be done by the backup firewall having a bad ACL list which does not allow the usual traffic to flow through 
+The usual traffic will be a server grabbing files from an ftp server on the other side of the firewall 
+All of this lab will be monitored by Elastic so that Elastic sees everything and can alert on the problem 
+We are going to use Elastic Agentic AI to make some interesting reports on this scenario 
+But again, not all of this will be made at once. I am taking this build in steps 
+
+#Description of the current stage of the architecture 
+Two UFW firewalls that are fronting an ftp server (server 1). 
+These firewalls will be setup one as a primary and the other not being used based on an AWS IP Route Failover table 
+These firewalls will be exactly the same except for a difference in the ACL list. 
+There will be a future way to simulate the primary firewall to fail. 
+This simulated failure will be done via a script run from my laptop but we are not building this yet 
+There is another server (server 2) that has a script that grabs a file from server 15 every minutes. 
+I want the client server to HAVE TO go through the firewalls to reach the ftp server. 
+
+#Items that will be requested later but not in this doc
+Elastic info.
+Script to change the firewall routing to the backup firewall
+
+
+#Specs on architecture:
+##General
+   This is a lab that will be turned on and off in less than a day. So secuirty is not as important. 0.0.0.0/0 is a valid option to reach my laptop for SSH
+   SSH is the best way to reach my laptop so all routing/security is setup for me to configure in this way
+   Use the following for all architecture actions
+      VPC : vpc-773e7e1e
+      Owner : 461485115270
+###Environmental Vaiables
+These are already set on my laptop so you can use these env values to meet these values
+   AWS Key Pair ID : AWS_ACCESS_KEY_ID 
+   AWS Key Pair Secret :  AWS_SECRET_ACCESS_KEY
+   AWS Region : AWS_DEFAULT_REGION
+
+
+
+##Everything made in AWS requires the below tags
+ These are the tags 
+ 1. <division> = field 
+ 2. <org> = "sa" 
+ 3. <team> = "pubsec" 
+ 4. <project> = nathanstacey firewallproject 
+ 5. Name = nathanstacey-<resource-type>-<env>
+
+#VPC
+
+##Single VPC
+
+###Three subnets:
+    172.31.100.0/24 → Client Server2 subnet
+    172.31.101.0/24 → Firewall subnet
+    172.31.102.0/24 → Server1 (FTP) subnet
+
+
+###Firewalls
+####Quantity and type of firewalls: Two pfSense Plus firewalls (AWS AMI 25.07.1) (both the exact version as the lab will simulate a bad ACL)
+####Specs needed for each firewall
+    WAN ENI (for SSH/UI)
+    LAN ENI in the firewall subnet
+    HA uses AWS Route Table Failover (no CARP)
+    These firewalls will be in the Firewall subnet 
+    Each must have source/dest check disabled
+#####Security Group for Firewalls
+  Inbound:
+  22/tcp    0.0.0.0/0      # SSH UI access
+  443/tcp   0.0.0.0/0      # pfSense web UI
+  80/tcp    0.0.0.0/0      # ACME or UI (optional)
+  All TCP   172.31.0.0/16  # Internal LAN traffic
+  All UDP   172.31.0.0/16
+#####Outbound:
+  All traffic 0.0.0.0/0
+####Firewall configuration
+  I understand that some these configurations cannot be created by Terraform. Can you create config.xml files that I can upload into the firewalls for full configuration
+  The primary firewall used in the AWS Route Table will 100 additional ACL's (you create these acls and make sure they will not affect anything) to appear like it is monitoring a lot of routes as this is a lab. These ACLs do not affect the lab at all
+  The firewall in backup mode will be configured exacly the same as the primary EXCEPT it will have an additional ACL that stops traffic between the client and ftp server
+
+###Routing
+####Client Subnet Route Table
+    Destination	Target
+    172.31.102.0/24	eni-firewall-primary
+    0.0.0.0/0	(optional) also via firewall
+####Server1 Subnet Route Table
+    Destination	Target
+    172.31.100.0/24	eni-firewall-primary
+    0.0.0.0/0	(optional) also via firewall
+####Firewall Subnet Route Table
+    Destination	Target
+    172.31.100.0/24	local
+    172.31.102.0/24	local
+    0.0.0.0/0 → Internet Gateway (IGW)
+
+
+###Server 1 info FTP Server
+####Instance Requirements:
+   t3.micro or t3.small
+   In Server1 Subnet (172.31.102.0/24)
+   Must use the Server1 route table (forces routing through firewall VIP)
+####AMI:
+   vUbuntu Server 24.04 LTS  
+   HVM — SSD  
+   AMI ID (x86): ami-0f5fcdfbd140e4ab7
+####SecurityGroup should allow:
+#####Inbound:
+  21/tcp        0.0.0.0/0         # FTP
+  40000–50000   0.0.0.0/0         # Passive FTP
+  22/tcp        0.0.0.0/0         # SSH
+  # Allow firewall-to-FTP communication
+  All TCP    sg nathanstacey-firewall-sg
+  All UDP    sg nathanstacey-firewall-sg
+#####Outbound:
+  All traffic 0.0.0.0/0
+####Configuration Tasks (Terraform will automate using user-data):
+#####Install FTP server
+   apt update
+   apt install -y vsftpd
+#####Configure vsftpd to support passive FTP
+   echo "pasv_enable=YES" >> /etc/vsftpd.conf
+   echo "pasv_min_port=40000" >> /etc/vsftpd.conf
+   echo "pasv_max_port=50000" >> /etc/vsftpd.conf
+   systemctl restart vsftpd
+#####Create a 1–2 GB file
+   fallocate -l 1500M /srv/ftp/testfile.bin
+#####Ensure file is world-readable
+   chmod 644 /srv/ftp/testfile.bin
+
+
+### Server 2 — Client Downloader Server
+####Purpose:
+   Downloads the 1–2 GB file from Server1 every minute.
+####AMI:
+   vUbuntu Server 24.04 LTS  
+   HVM — SSD  
+   AMI ID (x86): ami-0f5fcdfbd140e4ab7
+####Instance Requirements:
+   t3.micro or t3.small
+   In Client Subnet (172.31.100.0/24)
+   Must use the Client route table (forces routing through firewall VIP)
+####SecurityGroup:
+#####Inbound:
+  22/tcp  0.0.0.0/0    # SSH
+#####Outbound:
+  All traffic 0.0.0.0/0
+####Configuration Tasks (Terraform will automate using user-data):
+#####Install FTP client tools
+   apt update
+   apt install -y wget ftp
+#####Create download script
+   cat << 'EOF' > /usr/local/bin/download_file.sh
+   #!/bin/bash
+   wget -O /tmp/testfile.bin ftp://<SERVER1-PRIVATE-IP>/testfile.bin
+   EOF
+#####Change permissions of file
+   chmod +x /usr/local/bin/download_file.sh
+#####Create cron job
+   (crontab -l ; echo "*/15 * * * * /usr/local/bin/download_file.sh") | crontab -
+
+
+
+
+### IP Route failover script
+Create a script I can use to initiate the firewall IP Route failover. 
+I plan on using this ad hoc when I need it. So I would like it to be a simple thing for me to run
