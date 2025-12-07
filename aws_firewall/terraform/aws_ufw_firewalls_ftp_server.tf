@@ -1,0 +1,546 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0"
+    }
+  }
+  required_version = ">= 1.5.0"
+}
+
+provider "aws" {
+  region     = var.aws_region
+  access_key = var.aws_access_key
+  secret_key = var.aws_secret_key
+}
+
+# ------------------------------
+# Variables
+# ------------------------------
+variable "aws_region" {}
+variable "aws_access_key" {}
+variable "aws_secret_key" {}
+variable "vpc_id" {
+  default = "vpc-773e7e1e"
+}
+variable "owner_id" {
+  default = "461485115270"
+}
+# Optional : control SSH admin access (default open for lab)
+variable "admin_cidr" {
+  default = "0.0.0.0/0"
+}
+
+locals {
+  tags = {
+    division = "field"
+    org      = "sa"
+    team     = "pubsec"
+    project  = "nathanstacey firewallproject"
+  }
+}
+
+data "aws_availability_zones" "available" {}
+
+# ------------------------------
+# Subnets
+# ------------------------------
+resource "aws_subnet" "client" {
+  vpc_id                  = var.vpc_id
+  cidr_block              = "172.31.100.0/24"
+  map_public_ip_on_launch = true
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  tags = merge(local.tags, { Name = "nathanstacey-client-subnet-lab" })
+}
+
+resource "aws_subnet" "firewall" {
+  vpc_id                  = var.vpc_id
+  cidr_block              = "172.31.101.0/24"
+  map_public_ip_on_launch = true
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  tags = merge(local.tags, { Name = "nathanstacey-firewall-subnet-lab" })
+}
+
+resource "aws_subnet" "server1" {
+  vpc_id                  = var.vpc_id
+  cidr_block              = "172.31.102.0/24"
+  map_public_ip_on_launch = true
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  tags = merge(local.tags, { Name = "nathanstacey-server1-subnet-lab" })
+}
+
+# ------------------------------
+# Security Groups
+# ------------------------------
+resource "aws_security_group" "firewall_sg" {
+  name        = "nathanstacey-firewall-sg"
+  description = "SG for UFW firewalls"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  # Allow all TCP/UDP from internal VPC
+  ingress {
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "tcp"
+    cidr_blocks = ["172.31.0.0/16"]
+  }
+
+  ingress {
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "udp"
+    cidr_blocks = ["172.31.0.0/16"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.tags, { Name = "nathanstacey-firewall-sg-lab" })
+}
+
+resource "aws_security_group" "server1_sg" {
+  name        = "nathanstacey-server1-sg"
+  description = "SG for FTP Server1"
+  vpc_id      = var.vpc_id
+
+  # FTP control
+  ingress {
+    from_port   = 21
+    to_port     = 21
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Passive FTP range
+  ingress {
+    from_port   = 40000
+    to_port     = 50000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  # Allow the firewall SG to talk to the server on any port/proto
+  ingress {
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    security_groups = [aws_security_group.firewall_sg.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.tags, { Name = "nathanstacey-server1-sg-lab" })
+}
+
+resource "aws_security_group" "server2_sg" {
+  name        = "nathanstacey-server2-sg"
+  description = "SG for Client Downloader Server2"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.admin_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.tags, { Name = "nathanstacey-server2-sg-lab" })
+}
+
+# ------------------------------
+# FTP Server1
+# ------------------------------
+resource "aws_instance" "server1" {
+  ami                    = "ami-0f5fcdfbd140e4ab7"
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.server1.id
+  vpc_security_group_ids = [aws_security_group.server1_sg.id]
+  associate_public_ip_address = false
+
+  user_data = <<-EOF
+    #!/bin/bash
+    apt-get update -y
+    apt-get install -y vsftpd
+    echo "pasv_enable=YES" >> /etc/vsftpd.conf
+    echo "pasv_min_port=40000" >> /etc/vsftpd.conf
+    echo "pasv_max_port=50000" >> /etc/vsftpd.conf
+    systemctl restart vsftpd
+    fallocate -l 1500M /srv/ftp/testfile.bin || dd if=/dev/zero of=/srv/ftp/testfile.bin bs=1M count=1500
+    chmod 644 /srv/ftp/testfile.bin
+  EOF
+
+  tags = merge(local.tags, { Name = "nathanstacey-server1-lab" })
+}
+
+# ------------------------------
+# Client Downloader Server2
+# ------------------------------
+resource "aws_instance" "server2" {
+  ami                    = "ami-0f5fcdfbd140e4ab7"
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.client.id
+  vpc_security_group_ids = [aws_security_group.server2_sg.id]
+  associate_public_ip_address = false
+
+  user_data = <<-EOF
+    #!/bin/bash
+    apt-get update -y
+    apt-get install -y wget ftp
+    cat << 'EOD' > /usr/local/bin/download_file.sh
+#!/bin/bash
+wget -O /tmp/testfile.bin ftp://${aws_instance.server1.private_ip}/testfile.bin
+EOD
+    chmod +x /usr/local/bin/download_file.sh
+    # Run every minute to match lab description
+    (crontab -l 2>/dev/null; echo "* * * * * /usr/local/bin/download_file.sh") | crontab -
+  EOF
+
+  tags = merge(local.tags, { Name = "nathanstacey-server2-lab" })
+}
+
+# ------------------------------
+# Firewall ENIs + Instances (Ubuntu + UFW)
+# ------------------------------
+
+# Primary firewall: create two ENIs (wan + lan) with static private IPs in firewall subnet
+resource "aws_network_interface" "fw_primary_wan_eni" {
+  subnet_id       = aws_subnet.firewall.id
+  private_ips     = ["172.31.101.10"]
+  security_groups = [aws_security_group.firewall_sg.id]
+  tags = merge(local.tags, { Name = "nathanstacey-fw-primary-wan-eni" })
+}
+
+resource "aws_network_interface" "fw_primary_lan_eni" {
+  subnet_id       = aws_subnet.firewall.id
+  private_ips     = ["172.31.101.11"]
+  security_groups = [aws_security_group.firewall_sg.id]
+  tags = merge(local.tags, { Name = "nathanstacey-fw-primary-lan-eni" })
+}
+
+# Backup firewall ENIs
+resource "aws_network_interface" "fw_backup_wan_eni" {
+  subnet_id       = aws_subnet.firewall.id
+  private_ips     = ["172.31.101.20"]
+  security_groups = [aws_security_group.firewall_sg.id]
+  tags = merge(local.tags, { Name = "nathanstacey-fw-backup-wan-eni" })
+}
+
+resource "aws_network_interface" "fw_backup_lan_eni" {
+  subnet_id       = aws_subnet.firewall.id
+  private_ips     = ["172.31.101.21"]
+  security_groups = [aws_security_group.firewall_sg.id]
+  tags = merge(local.tags, { Name = "nathanstacey-fw-backup-lan-eni" })
+}
+
+# EIPs for WAN ENIs so you can access UI/SSH from Internet
+resource "aws_eip" "fw_primary_eip" {
+  vpc = true
+  tags = merge(local.tags, { Name = "nathanstacey-fw-primary-eip" })
+}
+
+resource "aws_eip_association" "fw_primary_eip_assoc" {
+  allocation_id        = aws_eip.fw_primary_eip.id
+  network_interface_id = aws_network_interface.fw_primary_wan_eni.id
+}
+
+resource "aws_eip" "fw_backup_eip" {
+  vpc = true
+  tags = merge(local.tags, { Name = "nathanstacey-fw-backup-eip" })
+}
+
+resource "aws_eip_association" "fw_backup_eip_assoc" {
+  allocation_id        = aws_eip.fw_backup_eip.id
+  network_interface_id = aws_network_interface.fw_backup_wan_eni.id
+}
+
+# Primary firewall Instance
+resource "aws_instance" "firewall_primary" {
+  ami                    = "ami-0f5fcdfbd140e4ab7" # ubuntu
+  instance_type          = "t3.small"
+  subnet_id              = aws_subnet.firewall.id
+  source_dest_check      = false
+  vpc_security_group_ids = [aws_security_group.firewall_sg.id]
+  associate_public_ip_address = false
+
+  # attach ENIs: device_index 0 is primary nic (WAN), 1 is second (LAN)
+  network_interface {
+    network_interface_id = aws_network_interface.fw_primary_wan_eni.id
+    device_index         = 0
+  }
+
+  network_interface {
+    network_interface_id = aws_network_interface.fw_primary_lan_eni.id
+    device_index         = 1
+  }
+
+  user_data = <<-EOF
+    #!/bin/bash
+    set -e
+    apt-get update -y
+    apt-get install -y ufw iptables-persistent net-tools
+
+    # Enable IP forwarding
+    sysctl -w net.ipv4.ip_forward=1
+    sed -i '/net.ipv4.ip_forward/d' /etc/sysctl.conf
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+
+    # Configure UFW default forward policy
+    sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+
+    # Setup NAT (masquerade) in /etc/ufw/before.rules for iptables-persistent compatibility
+    cat > /etc/ufw/before.rules <<'BFR'
+    # NAT table rules
+    *nat
+    :POSTROUTING ACCEPT [0:0]
+    # Masquerade traffic leaving the firewall (assumes eth0 is the WAN; adjust if needed)
+    -A POSTROUTING -o eth0 -j MASQUERADE
+    COMMIT
+BFR
+
+    # Insert 100 benign UFW rules (simulated ACLs) - allow many arbitrary ports from everywhere (lab only)
+    for i in $(seq 1 100); do
+      ufw allow proto tcp from any to any port $((10000 + i))
+    done
+
+    # Allow internal VPC traffic (explicit)
+    ufw allow in from 172.31.0.0/16
+
+    # Allow SSH/HTTP/HTTPS from admin cidr (open by SG too)
+    ufw allow proto tcp from any to any port 22
+    ufw allow proto tcp from any to any port 80
+    ufw allow proto tcp from any to any port 443
+
+    # Enable UFW and save iptables
+    ufw --force enable
+    netfilter-persistent save
+  EOF
+
+  tags = merge(local.tags, { Name = "nathanstacey-firewall-primary-lab" })
+}
+
+# Backup firewall Instance (same as primary but with "bad ACL")
+resource "aws_instance" "firewall_backup" {
+  ami                    = "ami-0f5fcdfbd140e4ab7"
+  instance_type          = "t3.small"
+  subnet_id              = aws_subnet.firewall.id
+  source_dest_check      = false
+  vpc_security_group_ids = [aws_security_group.firewall_sg.id]
+  associate_public_ip_address = false
+
+  network_interface {
+    network_interface_id = aws_network_interface.fw_backup_wan_eni.id
+    device_index         = 0
+  }
+
+  network_interface {
+    network_interface_id = aws_network_interface.fw_backup_lan_eni.id
+    device_index         = 1
+  }
+
+  user_data = <<-EOF
+    #!/bin/bash
+    set -e
+    apt-get update -y
+    apt-get install -y ufw iptables-persistent net-tools
+
+    # Enable IP forwarding
+    sysctl -w net.ipv4.ip_forward=1
+    sed -i '/net.ipv4.ip_forward/d' /etc/sysctl.conf
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+
+    sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
+
+    cat > /etc/ufw/before.rules <<'BFR'
+    *nat
+    :POSTROUTING ACCEPT [0:0]
+    -A POSTROUTING -o eth0 -j MASQUERADE
+    COMMIT
+BFR
+
+    # Insert same 100 benign rules for parity
+    for i in $(seq 1 100); do
+      ufw allow proto tcp from any to any port $((10000 + i))
+    done
+
+    # Now add the "bad ACL": deny client subnet -> server1 subnet (blocks downloads)
+    ufw deny from 172.31.100.0/24 to 172.31.102.0/24
+
+    # Allow internal VPC traffic otherwise (but the deny above takes precedence for that pair)
+    ufw allow in from 172.31.0.0/16
+
+    ufw allow proto tcp from any to any port 22
+    ufw allow proto tcp from any to any port 80
+    ufw allow proto tcp from any to any port 443
+
+    ufw --force enable
+    netfilter-persistent save
+  EOF
+
+  tags = merge(local.tags, { Name = "nathanstacey-firewall-backup-lab" })
+}
+
+# ------------------------------
+# Route Tables: Force client and server1 traffic via the primary firewall LAN ENI
+# ------------------------------
+
+# Create route table for client subnet
+resource "aws_route_table" "client_rt" {
+  vpc_id = var.vpc_id
+  tags = merge(local.tags, { Name = "nathanstacey-client-rt" })
+}
+
+resource "aws_route_table_association" "client_assoc" {
+  subnet_id      = aws_subnet.client.id
+  route_table_id = aws_route_table.client_rt.id
+}
+
+# Route to server1 via primary firewall LAN ENI (so traffic goes to firewall)
+resource "aws_route" "client_to_server1" {
+  route_table_id         = aws_route_table.client_rt.id
+  destination_cidr_block = "172.31.102.0/24"
+  network_interface_id   = aws_network_interface.fw_primary_lan_eni.id
+}
+
+# (Optional) default route via the firewall (comment/uncomment if you want)
+resource "aws_route" "client_default_via_fw" {
+  route_table_id         = aws_route_table.client_rt.id
+  destination_cidr_block = "0.0.0.0/0"
+  network_interface_id   = aws_network_interface.fw_primary_wan_eni.id
+}
+
+# Create route table for server1 subnet
+resource "aws_route_table" "server1_rt" {
+  vpc_id = var.vpc_id
+  tags = merge(local.tags, { Name = "nathanstacey-server1-rt" })
+}
+
+resource "aws_route_table_association" "server1_assoc" {
+  subnet_id      = aws_subnet.server1.id
+  route_table_id = aws_route_table.server1_rt.id
+}
+
+resource "aws_route" "server1_to_client" {
+  route_table_id         = aws_route_table.server1_rt.id
+  destination_cidr_block = "172.31.100.0/24"
+  network_interface_id   = aws_network_interface.fw_primary_lan_eni.id
+}
+
+resource "aws_route" "server1_default_via_fw" {
+  route_table_id         = aws_route_table.server1_rt.id
+  destination_cidr_block = "0.0.0.0/0"
+  network_interface_id   = aws_network_interface.fw_primary_wan_eni.id
+}
+
+# Firewall subnet route table (allow local + internet via IGW)
+resource "aws_internet_gateway" "igw" {
+  vpc_id = var.vpc_id
+  tags = merge(local.tags, { Name = "nathanstacey-igw" })
+}
+
+resource "aws_route_table" "firewall_rt" {
+  vpc_id = var.vpc_id
+  tags = merge(local.tags, { Name = "nathanstacey-firewall-rt" })
+}
+
+resource "aws_route_table_association" "firewall_assoc" {
+  subnet_id      = aws_subnet.firewall.id
+  route_table_id = aws_route_table.firewall_rt.id
+}
+
+resource "aws_route" "firewall_default" {
+  route_table_id         = aws_route_table.firewall_rt.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.igw.id
+}
+
+resource "aws_route" "firewall_client_local" {
+  route_table_id         = aws_route_table.firewall_rt.id
+  destination_cidr_block = "172.31.100.0/24"
+  gateway_id             = "local"
+}
+
+resource "aws_route" "firewall_server1_local" {
+  route_table_id         = aws_route_table.firewall_rt.id
+  destination_cidr_block = "172.31.102.0/24"
+  gateway_id             = "local"
+}
+
+# ------------------------------
+# Outputs for convenience
+# ------------------------------
+output "fw_primary_wan_private_ip" {
+  value = aws_network_interface.fw_primary_wan_eni.private_ips[0]
+}
+
+output "fw_primary_lan_private_ip" {
+  value = aws_network_interface.fw_primary_lan_eni.private_ips[0]
+}
+
+output "fw_primary_eip" {
+  value = aws_eip.fw_primary_eip.public_ip
+}
+
+output "fw_backup_eip" {
+  value = aws_eip.fw_backup_eip.public_ip
+}
+
+output "server1_private_ip" {
+  value = aws_instance.server1.private_ip
+}
+
+
+
+resource "local_file" "ansible_inventory" {
+  content = templatefile("${path.module}/templates/hosts.yml.tpl", {
+    server1_private_ip     = aws_instance.server1.private_ip
+    server2_private_ip     = aws_instance.server2.private_ip
+    fw_primary_private_ip  = aws_instance.firewall_primary.private_ip
+    fw_backup_private_ip   = aws_instance.firewall_backup.private_ip
+  })
+
+  filename = "${path.module}/ansible/inventory/hosts.yml"
+}
