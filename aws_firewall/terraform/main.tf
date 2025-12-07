@@ -15,7 +15,12 @@ provider "aws" {
 # ------------------------------
 # Variables
 # ------------------------------
-#variable "aws_region" {}
+variable "aws_region" {
+  description = "AWS region to deploy resources in"
+  default     = "us-east-2"  # optional, can be overridden by TF_VAR_aws_region
+}
+
+
 variable "vpc_id" {
   default = "vpc-773e7e1e"
 }
