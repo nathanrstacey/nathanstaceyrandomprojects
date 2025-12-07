@@ -237,11 +237,7 @@ resource "aws_network_interface" "fw_primary_lan_eni" {
   security_groups = [aws_security_group.firewall_sg.id]
   tags = merge(local.tags, { Name = "nathanstacey-fw-primary-lan-eni" })
 }
-resource "aws_network_interface_attachment" "fw_primary_lan_attach" {
-  instance_id          = aws_instance.firewall_primary.id
-  network_interface_id = aws_network_interface.fw_primary_lan_eni.id
-  device_index         = 1
-}
+
 
 
 resource "aws_network_interface" "fw_backup_lan_eni" {
