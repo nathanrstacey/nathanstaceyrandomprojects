@@ -1,0 +1,16 @@
+---
+- name: Ensure .ssh directory exists
+  file:
+    path: /home/ubuntu/.ssh
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: '0700'
+
+- name: Install SSH authorized key
+  copy:
+    src: authorized_keys
+    dest: /home/ubuntu/.ssh/authorized_keys
+    owner: ubuntu
+    group: ubuntu
+    mode: '0600'

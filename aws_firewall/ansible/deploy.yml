@@ -1,0 +1,22 @@
+---
+- name: Configure Firewalls
+  hosts: firewalls_primary, firewalls_backup
+  become: true
+  roles:
+    - ssh_key
+    - { role: firewall_primary, when: "'firewalls_primary' in group_names" }
+    - { role: firewall_backup, when: "'firewalls_backup' in group_names" }
+
+- name: Configure FTP Server
+  hosts: ftp_servers
+  become: true
+  roles:
+    - ssh_key
+    - ftp_server
+
+- name: Configure Client Downloader
+  hosts: client_servers
+  become: true
+  roles:
+    - ssh_key
+    - downloader

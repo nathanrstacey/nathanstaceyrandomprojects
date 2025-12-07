@@ -1,5 +1,21 @@
-- name: Deny client → server1 (bad ACL)
+---
+- name: Install UFW
+  apt:
+    name: ufw
+    state: present
+    update_cache: yes
+
+- name: Deny server1 entirely (simulate broken ACL)
   ufw:
     rule: deny
-    src: 172.31.100.0/24
-    dest: 172.31.102.0/24
+    from_ip: 172.31.102.0/24
+
+- name: Allow SSH from admin CIDR
+  ufw:
+    rule: allow
+    port: 22
+    proto: tcp
+
+- name: Enable UFW
+  ufw:
+    state: enabled
