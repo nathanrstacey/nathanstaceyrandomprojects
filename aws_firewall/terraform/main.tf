@@ -229,14 +229,6 @@ resource "aws_instance" "server2" {
 # Firewall ENIs + Instances (Ubuntu + UFW)
 # ------------------------------
 
-# Primary firewall: create two ENIs (wan + lan) with static private IPs in firewall subnet
-resource "aws_network_interface" "fw_primary_wan_eni" {
-  subnet_id       = aws_subnet.firewall.id
-  source_dest_check      = false
-  private_ips     = ["172.31.101.10"]
-  security_groups = [aws_security_group.firewall_sg.id]
-  tags = merge(local.tags, { Name = "nathanstacey-fw-primary-wan-eni" })
-}
 
 resource "aws_network_interface" "fw_primary_lan_eni" {
   subnet_id       = aws_subnet.firewall.id
@@ -245,15 +237,12 @@ resource "aws_network_interface" "fw_primary_lan_eni" {
   security_groups = [aws_security_group.firewall_sg.id]
   tags = merge(local.tags, { Name = "nathanstacey-fw-primary-lan-eni" })
 }
-
-# Backup firewall ENIs
-resource "aws_network_interface" "fw_backup_wan_eni" {
-  subnet_id       = aws_subnet.firewall.id
-  source_dest_check      = false
-  private_ips     = ["172.31.101.20"]
-  security_groups = [aws_security_group.firewall_sg.id]
-  tags = merge(local.tags, { Name = "nathanstacey-fw-backup-wan-eni" })
+resource "aws_network_interface_attachment" "fw_primary_lan_attach" {
+  instance_id          = aws_instance.firewall_primary.id
+  network_interface_id = aws_network_interface.fw_primary_lan_eni.id
+  device_index         = 1
 }
+
 
 resource "aws_network_interface" "fw_backup_lan_eni" {
   subnet_id       = aws_subnet.firewall.id
@@ -262,6 +251,11 @@ resource "aws_network_interface" "fw_backup_lan_eni" {
   security_groups = [aws_security_group.firewall_sg.id]
   tags = merge(local.tags, { Name = "nathanstacey-fw-backup-lan-eni" })
 }
+resource "aws_network_interface_attachment" "fw_backup_lan_attach" {
+  instance_id          = aws_instance.firewall_backup.id
+  network_interface_id = aws_network_interface.fw_backup_lan_eni.id
+  device_index         = 1
+}
 
 # EIPs for WAN ENIs so you can access UI/SSH from Internet
 resource "aws_eip" "fw_primary_eip" {
@@ -269,8 +263,8 @@ resource "aws_eip" "fw_primary_eip" {
 }
 
 resource "aws_eip_association" "fw_primary_eip_assoc" {
-  allocation_id        = aws_eip.fw_primary_eip.id
-  network_interface_id = aws_network_interface.fw_primary_wan_eni.id
+  allocation_id = aws_eip.fw_primary_eip.id
+  instance_id   = aws_instance.firewall_primary.id
 }
 
 resource "aws_eip" "fw_backup_eip" {
@@ -278,20 +272,27 @@ resource "aws_eip" "fw_backup_eip" {
 }
 
 resource "aws_eip_association" "fw_backup_eip_assoc" {
-  allocation_id        = aws_eip.fw_backup_eip.id
-  network_interface_id = aws_network_interface.fw_backup_wan_eni.id
+  allocation_id = aws_eip.fw_backup_eip.id
+  instance_id   = aws_instance.firewall_backup.id
 }
 
 # Primary firewall Instance
 resource "aws_instance" "firewall_primary" {
-  ami           = "ami-0f5fcdfbd140e4ab7"
-  instance_type = "t3.small"
+  ami                         = "ami-0f5fcdfbd140e4ab7"
+  instance_type               = "t3.small"
+  subnet_id                   = aws_subnet.firewall.id
 
-  # eth0 (primary NIC)
-  primary_network_interface_id = aws_network_interface.fw_primary_wan_eni.id
+  # Set the static WAN private IP that you originally planned for eth0
+  private_ip                  = "172.31.101.10"
+
+  # disable source/dest check on the primary instance (needed for routing)
+  source_dest_check           = false
+
+  vpc_security_group_ids      = [aws_security_group.firewall_sg.id]
 
   tags = merge(local.tags, { Name = "nathanstacey-firewall-primary-lab" })
 }
+
 
 # Attach eth1 (LAN NIC)
 resource "aws_network_interface_attachment" "fw_primary_lan_attach" {
@@ -303,21 +304,21 @@ resource "aws_network_interface_attachment" "fw_primary_lan_attach" {
 
 # Backup firewall Instance (same as primary but with "bad ACL")
 resource "aws_instance" "firewall_backup" {
-  ami           = "ami-0f5fcdfbd140e4ab7"
-  instance_type = "t3.small"
+  ami                         = "ami-0f5fcdfbd140e4ab7"
+  instance_type               = "t3.small"
+  subnet_id                   = aws_subnet.firewall.id
 
-  # eth0 (primary NIC)
-  primary_network_interface_id = aws_network_interface.fw_backup_wan_eni.id
+  # static WAN private IP for backup
+  private_ip                  = "172.31.101.20"
+
+  # disable source/dest check on the primary instance (needed for routing)
+  source_dest_check           = false
+
+  vpc_security_group_ids      = [aws_security_group.firewall_sg.id]
 
   tags = merge(local.tags, { Name = "nathanstacey-firewall-backup-lab" })
 }
 
-# Attach eth1 (LAN NIC)
-resource "aws_network_interface_attachment" "fw_backup_lan_attach" {
-  instance_id          = aws_instance.firewall_backup.id
-  network_interface_id = aws_network_interface.fw_backup_lan_eni.id
-  device_index         = 1
-}
 
 
 # ------------------------------
