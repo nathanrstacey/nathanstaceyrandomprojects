@@ -200,19 +200,6 @@ resource "aws_instance" "server1" {
   subnet_id              = aws_subnet.server1.id
   vpc_security_group_ids = [aws_security_group.server1_sg.id]
   associate_public_ip_address = false
-
-  user_data = <<-EOF
-    #!/bin/bash
-    apt-get update -y
-    apt-get install -y vsftpd
-    echo "pasv_enable=YES" >> /etc/vsftpd.conf
-    echo "pasv_min_port=40000" >> /etc/vsftpd.conf
-    echo "pasv_max_port=50000" >> /etc/vsftpd.conf
-    systemctl restart vsftpd
-    fallocate -l 1500M /srv/ftp/testfile.bin || dd if=/dev/zero of=/srv/ftp/testfile.bin bs=1M count=1500
-    chmod 644 /srv/ftp/testfile.bin
-  EOF
-
   tags = merge(local.tags, { Name = "nathanstacey-server1-lab" })
 }
 
@@ -225,19 +212,6 @@ resource "aws_instance" "server2" {
   subnet_id              = aws_subnet.client.id
   vpc_security_group_ids = [aws_security_group.server2_sg.id]
   associate_public_ip_address = false
-
-  user_data = <<-EOF
-    #!/bin/bash
-    apt-get update -y
-    apt-get install -y wget ftp
-    cat << 'EOD' > /usr/local/bin/download_file.sh
-#!/bin/bash
-wget -O /tmp/testfile.bin ftp://${aws_instance.server1.private_ip}/testfile.bin
-EOD
-    chmod +x /usr/local/bin/download_file.sh
-    # Run every minute to match lab description
-    (crontab -l 2>/dev/null; echo "* * * * * /usr/local/bin/download_file.sh") | crontab -
-  EOF
 
   tags = merge(local.tags, { Name = "nathanstacey-server2-lab" })
 }
@@ -317,48 +291,6 @@ resource "aws_instance" "firewall_primary" {
     device_index         = 1
   }
 
-  user_data = <<-EOF
-    #!/bin/bash
-    set -e
-    apt-get update -y
-    apt-get install -y ufw iptables-persistent net-tools
-
-    # Enable IP forwarding
-    sysctl -w net.ipv4.ip_forward=1
-    sed -i '/net.ipv4.ip_forward/d' /etc/sysctl.conf
-    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-
-    # Configure UFW default forward policy
-    sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
-
-    # Setup NAT (masquerade) in /etc/ufw/before.rules for iptables-persistent compatibility
-    cat > /etc/ufw/before.rules <<'BFR'
-    # NAT table rules
-    *nat
-    :POSTROUTING ACCEPT [0:0]
-    # Masquerade traffic leaving the firewall (assumes eth0 is the WAN; adjust if needed)
-    -A POSTROUTING -o eth0 -j MASQUERADE
-    COMMIT
-BFR
-
-    # Insert 100 benign UFW rules (simulated ACLs) - allow many arbitrary ports from everywhere (lab only)
-    for i in $(seq 1 100); do
-      ufw allow proto tcp from any to any port $((10000 + i))
-    done
-
-    # Allow internal VPC traffic (explicit)
-    ufw allow in from 172.31.0.0/16
-
-    # Allow SSH/HTTP/HTTPS from admin cidr (open by SG too)
-    ufw allow proto tcp from any to any port 22
-    ufw allow proto tcp from any to any port 80
-    ufw allow proto tcp from any to any port 443
-
-    # Enable UFW and save iptables
-    ufw --force enable
-    netfilter-persistent save
-  EOF
-
   tags = merge(local.tags, { Name = "nathanstacey-firewall-primary-lab" })
 }
 
@@ -380,45 +312,6 @@ resource "aws_instance" "firewall_backup" {
     network_interface_id = aws_network_interface.fw_backup_lan_eni.id
     device_index         = 1
   }
-
-  user_data = <<-EOF
-    #!/bin/bash
-    set -e
-    apt-get update -y
-    apt-get install -y ufw iptables-persistent net-tools
-
-    # Enable IP forwarding
-    sysctl -w net.ipv4.ip_forward=1
-    sed -i '/net.ipv4.ip_forward/d' /etc/sysctl.conf
-    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-
-    sed -i 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw
-
-    cat > /etc/ufw/before.rules <<'BFR'
-    *nat
-    :POSTROUTING ACCEPT [0:0]
-    -A POSTROUTING -o eth0 -j MASQUERADE
-    COMMIT
-BFR
-
-    # Insert same 100 benign rules for parity
-    for i in $(seq 1 100); do
-      ufw allow proto tcp from any to any port $((10000 + i))
-    done
-
-    # Now add the "bad ACL": deny client subnet -> server1 subnet (blocks downloads)
-    ufw deny from 172.31.100.0/24 to 172.31.102.0/24
-
-    # Allow internal VPC traffic otherwise (but the deny above takes precedence for that pair)
-    ufw allow in from 172.31.0.0/16
-
-    ufw allow proto tcp from any to any port 22
-    ufw allow proto tcp from any to any port 80
-    ufw allow proto tcp from any to any port 443
-
-    ufw --force enable
-    netfilter-persistent save
-  EOF
 
   tags = merge(local.tags, { Name = "nathanstacey-firewall-backup-lab" })
 }
