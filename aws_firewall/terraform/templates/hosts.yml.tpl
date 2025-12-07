@@ -1,7 +1,7 @@
 all:
   vars:
     ansible_user: ubuntu
-    ansible_ssh_private_key_file: /Users/nathanstacey/Desktop/quick/nathanstaceyohio6Dec2025.pem
+    ansible_ssh_private_key_file: /Users/nathanstacey/Desktop/quick/lab-key
 
   children:
     ftp:

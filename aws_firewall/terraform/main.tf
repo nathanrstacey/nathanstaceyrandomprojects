@@ -49,6 +49,14 @@ locals {
 
 data "aws_availability_zones" "available" {}
 
+# Upload public key to AWS so EC2 instances can be launched with it
+resource "aws_key_pair" "lab" {
+  key_name   = "lab-key"
+  public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINYXqoddki6b0VjgsNmEsRzh2GXn1CYS61AkVGCGsX/z lab-key"
+  tags       = merge(local.tags, { Name = "nathanstacey-lab-key" })
+}
+
+
 # ------------------------------
 # Internet Gateway
 # ------------------------------
