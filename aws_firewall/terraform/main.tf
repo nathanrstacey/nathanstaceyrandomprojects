@@ -229,6 +229,40 @@ resource "aws_instance" "server2" {
 # Firewall ENIs + Instances (Ubuntu + UFW)
 # ------------------------------
 
+resource "aws_network_interface" "fw_primary_wan_eni" {
+  subnet_id         = aws_subnet.public_subnet.id
+  private_ips       = ["10.0.1.10"] # choose your WAN IP
+  security_groups   = [aws_security_group.firewall_wan_sg.id]
+  source_dest_check = false
+  tags = {
+    Name = "fw-primary-wan-eni"
+  }
+}
+resource "aws_network_interface_attachment" "fw_primary_wan_attach" {
+  instance_id          = aws_instance.firewall_primary.id
+  network_interface_id = aws_network_interface.fw_primary_wan_eni.id
+  device_index         = 0
+}
+
+
+resource "aws_network_interface" "fw_backup_wan_eni" {
+  subnet_id         = aws_subnet.public_subnet.id
+  private_ips       = ["10.0.1.11"] # choose your WAN IP
+  security_groups   = [aws_security_group.firewall_wan_sg.id]
+  source_dest_check = false
+  tags = {
+    Name = "fw-backup-wan-eni"
+  }
+}
+resource "aws_network_interface_attachment" "fw_backup_wan_attach" {
+  instance_id          = aws_instance.firewall_backup.id
+  network_interface_id = aws_network_interface.fw_backup_wan_eni.id
+  device_index         = 0
+}
+
+
+
+
 
 resource "aws_network_interface" "fw_primary_lan_eni" {
   subnet_id       = aws_subnet.firewall.id
@@ -252,6 +286,7 @@ resource "aws_network_interface_attachment" "fw_backup_lan_attach" {
   network_interface_id = aws_network_interface.fw_backup_lan_eni.id
   device_index         = 1
 }
+
 
 # EIPs for WAN ENIs so you can access UI/SSH from Internet
 resource "aws_eip" "fw_primary_eip" {
