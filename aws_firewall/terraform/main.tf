@@ -40,6 +40,7 @@ locals {
   }
 }
 
+
 data "aws_availability_zones" "available" {}
 
 # ------------------------------
@@ -271,14 +272,13 @@ resource "aws_eip_association" "fw_backup_eip_assoc" {
 
 # Primary firewall Instance
 resource "aws_instance" "firewall_primary" {
-  ami                    = "ami-0f5fcdfbd140e4ab7" # ubuntu
+  ami                    = "ami-0f5fcdfbd140e4ab7"
   instance_type          = "t3.small"
   subnet_id              = aws_subnet.firewall.id
   source_dest_check      = false
   vpc_security_group_ids = [aws_security_group.firewall_sg.id]
-  associate_public_ip_address = false
+  # associate_public_ip_address = false   <-- REMOVE THIS
 
-  # attach ENIs: device_index 0 is primary nic (WAN), 1 is second (LAN)
   network_interface {
     network_interface_id = aws_network_interface.fw_primary_wan_eni.id
     device_index         = 0
@@ -292,6 +292,7 @@ resource "aws_instance" "firewall_primary" {
   tags = merge(local.tags, { Name = "nathanstacey-firewall-primary-lab" })
 }
 
+
 # Backup firewall Instance (same as primary but with "bad ACL")
 resource "aws_instance" "firewall_backup" {
   ami                    = "ami-0f5fcdfbd140e4ab7"
@@ -299,7 +300,6 @@ resource "aws_instance" "firewall_backup" {
   subnet_id              = aws_subnet.firewall.id
   source_dest_check      = false
   vpc_security_group_ids = [aws_security_group.firewall_sg.id]
-  associate_public_ip_address = false
 
   network_interface {
     network_interface_id = aws_network_interface.fw_backup_wan_eni.id
@@ -391,13 +391,11 @@ resource "aws_route" "firewall_default" {
 resource "aws_route" "firewall_client_local" {
   route_table_id         = aws_route_table.firewall_rt.id
   destination_cidr_block = "172.31.100.0/24"
-  gateway_id             = "local"
 }
 
 resource "aws_route" "firewall_server1_local" {
   route_table_id         = aws_route_table.firewall_rt.id
   destination_cidr_block = "172.31.102.0/24"
-  gateway_id             = "local"
 }
 
 # ------------------------------
