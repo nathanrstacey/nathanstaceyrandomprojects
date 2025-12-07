@@ -12,6 +12,12 @@ provider "aws" {
   region = var.aws_region
 }
 
+resource "aws_key_pair" "lab_key" {
+  key_name   = "lab-key"
+  public_key = file("~/.ssh/lab-key.pub")
+}
+
+
 # ------------------------------
 # Variables
 # ------------------------------
@@ -235,6 +241,7 @@ resource "aws_instance" "server1" {
   subnet_id                   = aws_subnet.server1.id
   vpc_security_group_ids      = [aws_security_group.server1_sg.id]
   associate_public_ip_address = false
+  key_name                    = aws_key_pair.lab_key.key_name
   tags = merge(local.tags, { Name = "nathanstacey-server1-lab" })
 }
 
@@ -244,6 +251,7 @@ resource "aws_instance" "server2" {
   subnet_id                   = aws_subnet.client.id
   vpc_security_group_ids      = [aws_security_group.server2_sg.id]
   associate_public_ip_address = false
+  key_name                    = aws_key_pair.lab_key.key_name
   tags = merge(local.tags, { Name = "nathanstacey-server2-lab" })
 }
 
@@ -274,6 +282,7 @@ resource "aws_instance" "firewall_primary" {
   subnet_id         = aws_subnet.firewall.id
   source_dest_check = false
   vpc_security_group_ids = [aws_security_group.firewall_sg.id]
+  key_name                    = aws_key_pair.lab_key.key_name
   tags = merge(local.tags, { Name = "nathanstacey-firewall-primary-lab" })
 }
 
@@ -312,6 +321,7 @@ resource "aws_instance" "firewall_backup" {
   subnet_id         = aws_subnet.firewall.id
   source_dest_check = false
   vpc_security_group_ids = [aws_security_group.firewall_sg.id]
+  key_name                    = aws_key_pair.lab_key.key_name
   tags = merge(local.tags, { Name = "nathanstacey-firewall-backup-lab" })
 }
 
