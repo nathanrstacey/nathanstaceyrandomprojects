@@ -1,22 +1,30 @@
-all:
-  children:
+---
+- name: Install SSH authorized_keys on all hosts (optional)
+  hosts: all
+  become: true
+  roles:
+    - ssh_key
 
-    firewalls_primary:
-      hosts:
-        fw_primary:
-          ansible_host: 172.31.101.10
+- name: Configure Primary Firewall
+  hosts: firewalls_primary
+  become: true
+  roles:
+    - firewall_primary
 
-    firewalls_backup:
-      hosts:
-        fw_backup:
-          ansible_host: 172.31.101.11
+- name: Configure Backup Firewall
+  hosts: firewalls_backup
+  become: true
+  roles:
+    - firewall_backup
 
-    ftp_servers:
-      hosts:
-        server1:
-          ansible_host: 172.31.102.41
+- name: Configure FTP Server
+  hosts: ftp_servers
+  become: true
+  roles:
+    - ftp_server
 
-    client_servers:
-      hosts:
-        server2:
-          ansible_host: 172.31.100.184
+- name: Configure Client Downloader
+  hosts: client_servers
+  become: true
+  roles:
+    - downloader

@@ -1,39 +1,54 @@
 ---
-- name: Install UFW
+- name: Install firewall packages
   apt:
-    name: ufw
+    name:
+      - ufw
+      - iptables-persistent
+      - net-tools
     state: present
     update_cache: yes
-
-- name: Allow internal LAN traffic
-  ufw:
-    rule: allow
-    proto: any
-    from_ip: 172.31.0.0/16
-
-- name: Allow SSH from admin CIDR
-  ufw:
-    rule: allow
-    port: 22
-    proto: tcp
 
 - name: Enable IP forwarding
   sysctl:
     name: net.ipv4.ip_forward
-    value: '1'
-    sysctl_set: true
-    reload: true
+    value: "1"
+    state: present
+    reload: yes
 
-- name: Enable NAT masquerading
+- name: Set UFW default forward policy
+  replace:
+    path: /etc/default/ufw
+    regexp: '^DEFAULT_FORWARD_POLICY=.*'
+    replace: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+
+- name: Configure NAT in before.rules (MASQUERADE via default interface)
   copy:
     dest: /etc/ufw/before.rules
     content: |
       *nat
       :POSTROUTING ACCEPT [0:0]
-      -A POSTROUTING -s 172.31.0.0/16 -o ens5 -j MASQUERADE
+      -A POSTROUTING -o {{ ansible_default_ipv4.interface }} -j MASQUERADE
       COMMIT
+
+- name: Allow all traffic from internal VPC
+  ufw:
+    rule: allow
+    src: 172.31.0.0/16
+
+- name: Allow admin ports (SSH/HTTP/HTTPS)
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - 22
+    - 80
+    - 443
+
+# leave everything else to UFW defaults (deny incoming)
 
 - name: Enable UFW
   ufw:
     state: enabled
+    policy: deny
     direction: incoming

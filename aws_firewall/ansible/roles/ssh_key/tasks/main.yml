@@ -5,12 +5,12 @@
     state: directory
     owner: ubuntu
     group: ubuntu
-    mode: '0700'
+    mode: "0700"
 
-- name: Install SSH authorized key
+- name: Install authorized_keys
   copy:
     src: authorized_keys
     dest: /home/ubuntu/.ssh/authorized_keys
     owner: ubuntu
     group: ubuntu
-    mode: '0600'
+    mode: "0600"

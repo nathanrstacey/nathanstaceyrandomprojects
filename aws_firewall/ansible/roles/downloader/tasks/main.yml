@@ -1,5 +1,5 @@
 ---
-- name: Install wget and ftp client tools
+- name: Install wget and ftp client
   apt:
     name:
       - wget
@@ -13,10 +13,11 @@
     mode: "0755"
     content: |
       #!/bin/bash
-      wget -O /tmp/testfile.bin ftp://{{ hostvars['server1']['ansible_host'] }}/testfile.bin
+      {{ hostvars['server1']['ansible_host'] }} 
+      wget -O /tmp/testfile.bin ftp://$SERVER_IP/testfile.bin
 
 - name: Ensure cron job runs every minute
   cron:
     name: "Download test file every minute"
     minute: "*"
-    job: "/usr/local/bin/download_file.sh"
+    job: "/usr/local/bin/download_file.sh >> /var/log/download_test.log 2>&1"

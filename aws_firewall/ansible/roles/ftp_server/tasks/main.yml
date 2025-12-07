@@ -5,25 +5,35 @@
     state: present
     update_cache: yes
 
-- name: Configure passive FTP ports
+- name: Configure passive mode
   lineinfile:
     path: /etc/vsftpd.conf
+    regexp: '^{{ item.split("=")[0] }}'
     line: "{{ item }}"
+    create: yes
   loop:
+    - "pasv_enable=YES"
     - "pasv_min_port=40000"
     - "pasv_max_port=50000"
-
-- name: Allow FTP ports in UFW
-  ufw:
-    rule: allow
-    port: "{{ item }}"
-    proto: tcp
-  loop:
-    - 21
-    - 40000:50000
+    - "listen=YES"
+    - "listen_ipv6=NO"
+    - "anonymous_enable=YES"
+    - "write_enable=YES"
 
 - name: Restart vsftpd
-  systemd:
+  service:
     name: vsftpd
     state: restarted
     enabled: yes
+
+- name: Create testfile.bin
+  shell: |
+    mkdir -p /srv/ftp
+    fallocate -l 100M /srv/ftp/testfile.bin || dd if=/dev/zero of=/srv/ftp/testfile.bin bs=1M count=100
+  args:
+    creates: /srv/ftp/testfile.bin
+
+- name: Set permissions on testfile.bin
+  file:
+    path: /srv/ftp/testfile.bin
+    mode: "0644"
